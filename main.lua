@@ -1,10 +1,10 @@
 --[[
     戰利品 (Lootify) 自製加強版 - Orion UI 兼容版
-    版本：v9.5 (終極修復穩定版)
+    版本：v9.6 (修復點擊無效與載入問題)
     UI 庫：Orion Library
 ]]
 
-print("--- [愛ㄔㄐㄐ] 正在啟動 v9.5 ---")
+print("--- [愛ㄔㄐㄐ] 正在啟動 v9.6 ---")
 
 local function GetLibrary(url)
     print("[愛ㄔㄐㄐ] 嘗試載入 UI 庫: " .. url)
@@ -53,7 +53,21 @@ if not OrionLib then
     return
 end
 
-local Window = OrionLib:MakeWindow({Name = "愛ㄔㄐㄐ v9.5", HidePremium = false, SaveConfig = false, IntroText = "終極穩定版啟動"})
+-- 修復點擊無效：禁用 IntroEnabled 並確保 SaveConfig 為 false
+local Window = OrionLib:MakeWindow({
+    Name = "愛ㄔㄐㄐ v9.6", 
+    HidePremium = false, 
+    SaveConfig = false, 
+    IntroEnabled = false, -- 關鍵修復：禁用開場動畫以防止輸入阻斷
+    ConfigFolder = "Lootify_愛ㄔㄐㄐ"
+})
+
+OrionLib:MakeNotification({
+    Name = "腳本已就緒",
+    Content = "v9.6 點擊修復版已啟動！您可以開始操作了。",
+    Image = "rbxassetid://4483345998",
+    Time = 5
+})
 
 -- 全局變量
 local Flags = {
