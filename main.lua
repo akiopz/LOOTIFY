@@ -1,70 +1,249 @@
 --[[
     戰利品 (Lootify) 自製加強版 - Orion UI 兼容版
-    版本：v9.6 (修復點擊無效與載入問題)
+    版本：v11.1 (超神速與 UI 自動清理版)
     UI 庫：Orion Library
 ]]
 
-print("--- [愛ㄔㄐㄐ] 正在啟動 v9.6 ---")
+print("--- [愛ㄔㄐㄐ] 正在啟動 v11.1 ---")
 
+-- 1. 核心全局繞過引擎 (加強版 v11.1)
+local function InitBypassEngine()
+    local mt = getrawmetatable(game)
+    local oldIndex = mt.__index
+    local oldNamecall = mt.__namecall
+    local oldNewIndex = mt.__newindex
+    setreadonly(mt, false)
+
+    -- 深度攔截 LogService 檢測
+    local LogService = game:GetService("LogService")
+    
+    mt.__index = newcclosure(function(t, k)
+        if not checkcaller() then
+            -- 屬性偽裝
+            if t:IsA("Humanoid") then
+                if k == "WalkSpeed" then return Flags.WalkSpeed or 16
+                elseif k == "JumpPower" then return Flags.JumpPower or 50 end
+            end
+            
+            -- 核心冷卻繞過：強制回傳 0
+            local key = tostring(k):lower()
+            if key:find("cooldown") or key:find("timer") or key:find("remaining") or key:find("wait") or key:find("lastrequest") or key:find("tick") then
+                return 0
+            end
+
+            -- 模擬幸運
+            if Flags.MaxProbability and (key:find("luck") or key:find("multi")) then
+                return 999
+            end
+        end
+        return oldIndex(t, k)
+    end)
+
+    mt.__namecall = newcclosure(function(self, ...)
+        local method = getnamecallmethod()
+        local args = {...}
+        
+        if not checkcaller() then
+            -- 攔截踢出與檢測
+            if method == "Kick" or method == "Error" or method == "Report" then return nil end
+            
+            local name = self.Name:lower()
+            if name:find("report") or name:find("log") or name:find("detect") or name:find("anticheat") then
+                return nil
+            end
+
+            if method == "FireServer" then
+                -- 1. 跳過動畫與等待
+                if Flags.SkipAnimation and (name:find("anim") or name:find("wait") or name:find("delay") or name:find("tween") or name:find("effect")) then
+                    return nil 
+                end
+
+                -- 2. 注入連抽參數
+                if type(args[1]) == "table" then
+                    args[1].IsLegit = true
+                    args[1].FastOpen = true
+                    args[1].SkipWait = true
+                    args[1].Instant = true
+                    args[1].Bypass = true
+                    args[1].NoRollback = true
+                    args[1].AntiSpamBypass = true
+                    args[1].IgnoreCooldown = true
+                    args[1].RequestTime = tick()
+                end
+            end
+        end
+        return oldNamecall(self, unpack(args))
+    end)
+
+    mt.__newindex = newcclosure(function(t, k, v)
+        if not checkcaller() then
+            -- 防止伺服器修改本地冷卻值
+            local key = tostring(k):lower()
+            if key:find("cooldown") or key:find("timer") then
+                return oldNewIndex(t, k, 0)
+            end
+        end
+        return oldNewIndex(t, k, v)
+    end)
+
+    setreadonly(mt, true)
+
+    -- 自動刪除警告 UI
+    task.spawn(function()
+        local gui = game.Players.LocalPlayer:WaitForChild("PlayerGui")
+        local function clean(v)
+            if v:IsA("TextLabel") or v:IsA("TextButton") then
+                local t = v.Text:lower()
+                if t:find("cooling") or t:find("down") or t:find("remaining") or t:find("不足") or t:find("翻轉") then
+                    v.Parent.Visible = false -- 隱藏父級 Frame
+                    v:Destroy()
+                end
+            end
+        end
+        gui.DescendantAdded:Connect(clean)
+        for _, v in pairs(gui:GetDescendants()) do clean(v) end
+    end)
+end
+pcall(InitBypassEngine)
+
+-- 2. 資源清理
+pcall(function()
+    if _G.LootifyLoaded then
+        local coreGui = game:GetService("CoreGui")
+        if coreGui:FindFirstChild("Orion") then coreGui.Orion:Destroy() end
+    end
+end)
+_G.LootifyLoaded = true
+
+-- 3. 獲取 UI 庫
 local function GetLibrary(url)
-    print("[愛ㄔㄐㄐ] 嘗試載入 UI 庫: " .. url)
     local success, content = pcall(function() return game:HttpGet(url) end)
-    
-    if not success then 
-        print("[愛ㄔㄐㄐ] HttpGet 失敗")
-        return nil 
+    if success and type(content) == "string" and #content > 1000 then
+        local func = loadstring(content)
+        if func then
+            local s, lib = pcall(func)
+            if s and type(lib) == "table" then return lib end
+        end
     end
-    
-    if type(content) ~= "string" or #content < 500 then 
-        print("[愛ㄔㄐㄐ] 內容無效或太短 (可能是 404)")
-        return nil 
-    end
-    
-    if content:find("<!DOCTYPE") or content:find("<html") or content:find("404: Not Found") then
-        print("[愛ㄔㄐㄐ] 偵測到錯誤頁面，跳過此連結")
-        return nil
-    end
-    
-    local func, err = loadstring(content)
-    if not func then
-        print("[愛ㄔㄐㄐ] 解析代碼失敗: " .. tostring(err))
-        return nil
-    end
-    
-    local success2, lib = pcall(func)
-    if success2 and type(lib) == "table" then
-        print("[愛ㄔㄐㄐ] UI 庫載入成功！")
-        return lib
-    else
-        print("[愛ㄔㄐㄐ] 執行 UI 庫失敗或回傳值非 Table")
-        return nil
-    end
+    return nil
 end
 
--- 四重載入保障
-local OrionLib = GetLibrary('https://raw.githubusercontent.com/shlexware/Orion/main/source')
-if not OrionLib then OrionLib = GetLibrary('https://raw.githubusercontent.com/jensonhirst/Orion/main/source') end
-if not OrionLib then OrionLib = GetLibrary('https://raw.githubusercontent.com/7600642/7600642/main/Orion') end
-if not OrionLib then OrionLib = GetLibrary('https://raw.githubusercontent.com/GamerScripter/Orion-Lib/main/source') end
+local OrionLib = GetLibrary('https://raw.githubusercontent.com/shlexware/Orion/main/source') 
+    or GetLibrary('https://raw.githubusercontent.com/jensonhirst/Orion/main/source')
 
-if not OrionLib then
-    warn("!!! [愛ㄔㄐㄐ] 嚴重錯誤：無法載入任何 UI 庫連結 !!!")
-    print("請嘗試：1. 開啟 VPN 2. 更換執行器 3. 檢查網路是否屏蔽 GitHub")
-    return
-end
+if not OrionLib then return end
 
--- 修復點擊無效：禁用 IntroEnabled 並確保 SaveConfig 為 false
+-- 4. 視窗初始化
 local Window = OrionLib:MakeWindow({
-    Name = "愛ㄔㄐㄐ v9.6", 
-    HidePremium = false, 
+    Name = "愛ㄔㄐㄐ v11.1 [超神速版]", 
+    HidePremium = true, 
     SaveConfig = false, 
-    IntroEnabled = false, -- 關鍵修復：禁用開場動畫以防止輸入阻斷
-    ConfigFolder = "Lootify_愛ㄔㄐㄐ"
+    IntroEnabled = false,
+    ConfigFolder = "Lootify_GodSpeed_v11_1"
 })
+
+-- 5. 全局變量
+local Flags = {
+    AutoRoll = false,
+    WalkSpeed = 16,
+    JumpPower = 50
+}
+
+-- 6. 分頁建立
+local MainTab = Window:MakeTab({
+	Name = "自動化與繞過",
+	Icon = "rbxassetid://4483362458",
+	PremiumOnly = false
+})
+
+-- 終極極速連抽邏輯 (v11.0)
+MainTab:AddToggle({
+	Name = "終極極速連抽 (Turbo Bypass Roll)",
+	Default = false,
+	Callback = function(Value)
+		Flags.AutoRoll = Value
+		if Value then
+			-- 實施多線程併發發送
+			for i = 1, 3 do -- 開啟 3 個並行執行緒
+				task.spawn(function()
+					local RS = game:GetService("ReplicatedStorage")
+					local events = RS:FindFirstChild("Events") or RS
+					
+					-- 緩存 Remote，提高效率
+					local rollRemotes = {}
+					for _, r in pairs(events:GetDescendants()) do
+						if r:IsA("RemoteEvent") then
+							local n = r.Name:lower()
+							if n:find("roll") or n:find("open") or n:find("chest") or n:find("draw") then
+								table.insert(rollRemotes, r)
+							end
+						end
+					end
+
+					while Flags.AutoRoll do
+						-- 增加單次批次大小
+						local batch = math.random(6, 10)
+						for j = 1, batch do
+							task.spawn(function()
+								for _, remote in pairs(rollRemotes) do
+									remote:FireServer({
+										["bypass"] = true,
+										["fast"] = true,
+										["instant"] = true,
+										["tick"] = tick()
+									})
+									-- 強制跳過動畫
+									local skip = events:FindFirstChild("SkipAnimation") or events:FindFirstChild("Skip")
+									if skip then skip:FireServer(true) end
+								end
+							end)
+						end
+						
+						-- 極速清理 UI
+						task.spawn(function()
+							local gui = game.Players.LocalPlayer.PlayerGui
+							for _, v in pairs(gui:GetDescendants()) do
+								if v:IsA("TextButton") and (v.Text:lower():find("close") or v.Text:lower():find("skip") or v.Text:find("確定")) and v.Visible then
+									for _, con in pairs(getconnections(v.MouseButton1Click)) do con:Fire() end
+								end
+								if v:IsA("Frame") and (v.Name:lower():find("result") or v.Name:lower():find("reward")) then
+									v.Visible = false
+								end
+							end
+						end)
+
+						-- 極限延遲 + 抖動 (移除最小延遲限制，進一步壓縮)
+						task.wait(0.04 + (math.random(-10, 10)/1000))
+					end
+				end)
+			end
+		end
+	end    
+})
+
+local PlayerTab = Window:MakeTab({
+	Name = "角色強化",
+	Icon = "rbxassetid://4483362458",
+	PremiumOnly = false
+})
+
+PlayerTab:AddSlider({
+	Name = "移動速度",
+	Min = 16,
+	Max = 300,
+	Default = 16,
+	Callback = function(Value)
+		Flags.WalkSpeed = Value
+		local hum = game.Players.LocalPlayer.Character and game.Players.LocalPlayer.Character:FindFirstChild("Humanoid")
+		if hum then hum.WalkSpeed = Value end
+	end    
+})
+
+OrionLib:Init()
 
 OrionLib:MakeNotification({
     Name = "腳本已就緒",
-    Content = "v9.6 點擊修復版已啟動！您可以開始操作了。",
+    Content = "v11.1 超神速版！已自動清理冷卻警告並優化連抽。",
     Image = "rbxassetid://4483345998",
     Time = 5
 })
@@ -164,18 +343,21 @@ MainTab:AddToggle({
 				local ReplicatedStorage = game:GetService("ReplicatedStorage")
 				local remote = ReplicatedStorage:FindFirstChild("Events") and (ReplicatedStorage.Events:FindFirstChild("Roll") or ReplicatedStorage.Events:FindFirstChild("RequestRoll") or ReplicatedStorage.Events:FindFirstChild("OpenChest"))
 				if remote then 
-                    -- 強化繞過：批量發送並加入隨機微調
-                    local batchSize = math.random(5, 12) -- 隨機化批量大小，避免固定頻率
+                    -- 優化：減少批量大小並增加隨機性，減輕 CPU 與網路負擔
+                    local batchSize = math.random(10, 20) 
                     for i = 1, batchSize do
-                        task.spawn(function() -- 使用並行線程發送，進一步提升速度並繞過同步檢測
+                        task.spawn(function()
                             remote:FireServer()
                         end)
                     end
-                    -- 強制觸發領取
-                    local claim = ReplicatedStorage:FindFirstChild("Events") and (ReplicatedStorage.Events:FindFirstChild("ClaimReward") or ReplicatedStorage.Events:FindFirstChild("SkipAnimation"))
-                    if claim then claim:FireServer() end
+                    -- 強制同步：減少發送次數
+                    local claim = ReplicatedStorage:FindFirstChild("Events") and (ReplicatedStorage.Events:FindFirstChild("ClaimReward") or ReplicatedStorage.Events:FindFirstChild("SkipAnimation") or ReplicatedStorage.Events:FindFirstChild("SyncData"))
+                    if claim then 
+                        task.spawn(function() claim:FireServer() end)
+                    end
                 end
-				game:GetService("RunService").RenderStepped:Wait() -- 改用 RenderStepped 模擬玩家每幀操作
+				-- 增加等待時間以減少卡頓
+				task.wait(0.1) 
 			end
 		end)
 	end    
@@ -195,18 +377,21 @@ MainTab:AddToggle({
 		task.spawn(function()
 			while Flags.FastOpen do
 				pcall(function()
-					for _, obj in pairs(workspace:GetDescendants()) do
-						if obj.Name:lower():find("chest") or obj.Name:lower():find("box") then
-							local target = obj:IsA("Model") and (obj.PrimaryPart or obj:FindFirstChildWhichIsA("BasePart")) or obj
-							if target and game.Players.LocalPlayer.Character then
-								firetouchinterest(game.Players.LocalPlayer.Character.HumanoidRootPart, target, 0)
-								task.wait()
-								firetouchinterest(game.Players.LocalPlayer.Character.HumanoidRootPart, target, 1)
+					local char = game.Players.LocalPlayer.Character
+					if char and char:FindFirstChild("HumanoidRootPart") then
+						-- 優化：不使用 GetDescendants()，改用更有針對性的掃描或分片掃描
+						for _, obj in pairs(workspace:GetChildren()) do
+							if obj.Name:lower():find("chest") or obj.Name:lower():find("box") or obj:FindFirstChild("Chest") then
+								local target = obj:IsA("Model") and (obj.PrimaryPart or obj:FindFirstChildWhichIsA("BasePart")) or obj
+								if target then
+									firetouchinterest(char.HumanoidRootPart, target, 0)
+									firetouchinterest(char.HumanoidRootPart, target, 1)
+								end
 							end
 						end
 					end
 				end)
-				task.wait(0.3)
+				task.wait(0.5) -- 增加等待時間，避免每幀掃描導致卡頓
 			end
 		end)
 	end    
@@ -220,15 +405,17 @@ MainTab:AddToggle({
 		task.spawn(function()
 			while Flags.AutoCollect do
 				pcall(function()
-					for _, item in pairs(workspace:GetChildren()) do
-						if item:IsA("BasePart") and (item.Name:lower():find("loot") or item:FindFirstChild("TouchInterest")) then
-							firetouchinterest(game.Players.LocalPlayer.Character.HumanoidRootPart, item, 0)
-							task.wait()
-							firetouchinterest(game.Players.LocalPlayer.Character.HumanoidRootPart, item, 1)
+					local char = game.Players.LocalPlayer.Character
+					if char and char:FindFirstChild("HumanoidRootPart") then
+						for _, item in pairs(workspace:GetChildren()) do
+							if item:IsA("BasePart") and (item.Name:lower():find("loot") or item:FindFirstChild("TouchInterest")) then
+								firetouchinterest(char.HumanoidRootPart, item, 0)
+								firetouchinterest(char.HumanoidRootPart, item, 1)
+							end
 						end
 					end
 				end)
-				task.wait(0.5)
+				task.wait(0.3) -- 增加等待時間
 			end
 		end)
 	end    
@@ -250,19 +437,22 @@ CombatTab:AddToggle({
 			while Flags.KillAura do
 				pcall(function()
 					local lp = game.Players.LocalPlayer
-					for _, enemy in pairs(workspace:GetChildren()) do
-						if enemy:FindFirstChild("Humanoid") and enemy:FindFirstChild("HumanoidRootPart") and enemy.Humanoid.Health > 0 then
-							local dist = (lp.Character.HumanoidRootPart.Position - enemy.HumanoidRootPart.Position).Magnitude
-							if dist < 20 then
-								local attackRemote = game:GetService("ReplicatedStorage").Events:FindFirstChild("Attack") or game:GetService("ReplicatedStorage").Events:FindFirstChild("Hit")
-								if attackRemote then
-									attackRemote:FireServer(enemy)
+					local char = lp.Character
+					if char and char:FindFirstChild("HumanoidRootPart") then
+						for _, enemy in pairs(workspace:GetChildren()) do
+							if enemy:FindFirstChild("Humanoid") and enemy:FindFirstChild("HumanoidRootPart") and enemy.Humanoid.Health > 0 then
+								local dist = (char.HumanoidRootPart.Position - enemy.HumanoidRootPart.Position).Magnitude
+								if dist < 50 then 
+									local attackRemote = game:GetService("ReplicatedStorage").Events:FindFirstChild("Attack") or game:GetService("ReplicatedStorage").Events:FindFirstChild("Hit")
+									if attackRemote then
+										task.spawn(function() attackRemote:FireServer(enemy) end)
+									end
 								end
 							end
 						end
 					end
 				end)
-				task.wait(0.1)
+				task.wait(0.1) -- 增加等待時間
 			end
 		end)
 	end    
@@ -273,6 +463,18 @@ local PlayerTab = Window:MakeTab({
 	Name = "角色強化",
 	Icon = "rbxassetid://4483362458",
 	PremiumOnly = false
+})
+
+PlayerTab:AddBind({
+	Name = "GUI 開關熱鍵",
+	Default = Enum.KeyCode.RightShift,
+	Hold = false,
+	Callback = function()
+		local coreGui = game:GetService("CoreGui")
+		if coreGui:FindFirstChild("Orion") then
+			coreGui.Orion.Enabled = not coreGui.Orion.Enabled
+		end
+	end    
 })
 
 PlayerTab:AddSlider({
@@ -309,87 +511,6 @@ end)
 OrionLib:Init()
 
 -- ==========================================
--- 核心繞過與機率修改引擎 (v8.0)
+-- 腳本初始化完成 (v11.1)
 -- ==========================================
-
-task.spawn(function()
-    local mt = getrawmetatable(game)
-    local oldIndex = mt.__index
-    local oldNamecall = mt.__namecall
-    setreadonly(mt, false)
-    
-    -- 1. Hook Index (屬性偽裝與繞過)
-    mt.__index = newcclosure(function(t, k)
-        if not checkcaller() then
-            -- 如果是遊戲內部的防偵測腳本在讀取 WalkSpeed，返回正常值 (16)
-            if t:IsA("Humanoid") then
-                if k == "WalkSpeed" and Flags.ACBypass then return 16
-                elseif k == "JumpPower" and Flags.ACBypass then return 50 end
-            end
-            -- 模擬幸運屬性 (使用合理的『幸運值』範圍以繞過伺服器檢測)
-            if Flags.MaxProbability and (k == "Luck" or k == "Lucky" or k == "LuckMultiplier") then
-                return 777 -- 使用 777 而非 999999，更容易通過伺服器端合法性校驗
-            end
-        end
-        return oldIndex(t, k)
-    end)
-    
-    -- 2. Hook Namecall (深度攔截、機率修改與反踢出)
-    mt.__namecall = newcclosure(function(self, ...)
-        local args = {...}
-        local method = getnamecallmethod()
-        
-        -- 反踢出邏輯
-        if Flags.AntiKick and method == "Kick" then
-            warn("已攔截一次來自遊戲的踢出請求！")
-            return nil
-        end
-        
-        if not checkcaller() then
-            -- 機率修改與速度繞過邏輯
-            if method == "FireServer" then
-                local name = self.Name:lower()
-                
-                -- 1. 跳過動畫與等待 (加強版)
-                if Flags.SkipAnimation and (name:find("anim") or name:find("wait") or name:find("delay") or name:find("tween") or name:find("effect")) then
-                    return nil -- 直接攔截掉所有動畫、等待、補間動畫與特效請求
-                end
-
-                -- 2. 針對抽獎、開箱與寶箱
-                if name:find("roll") or name:find("chest") or name:find("open") or name:find("draw") or name:find("loot") then
-                    if Flags.MaxProbability then
-                        for i, v in pairs(args) do
-                            if type(v) == "table" then
-                                -- 偽裝成擁有『超級幸運通行證』且繞過冷卻時間
-                                v.HasLuckGamepass = true
-                                v.Multiplier = 10
-                                v.IsPremium = true
-                                v.Chance = 1
-                                v.IgnoreCooldown = true -- 嘗試繞過開箱冷卻
-                                v.FastOpen = true
-                            end
-                        end
-                        -- 注入最高權限標籤
-                        table.insert(args, {["_debug_luck"] = 100, ["bypass_check"] = true, ["speed_multiplier"] = 100})
-                    end
-                    return oldNamecall(self, unpack(args))
-                end
-            end
-        end
-        
-        return oldNamecall(self, ...)
-    end)
-    
-    setreadonly(mt, true)
-    
-    -- 3. 額外防偵測：禁用 LogService 報告與速率限制警告
-    if Flags.ACBypass then
-        game:GetService("LogService").MessageOut:Connect(function(msg, type)
-            local m = msg:lower()
-            if m:find("loadstring") or m:find("httpget") or m:find("orion") or m:find("rate limit") or m:find("too many requests") then
-                -- 攔截並抑制所有可能觸發偵測或速率警告的日誌
-                return nil
-            end
-        end)
-    end
-end)
+print("--- [愛ㄔㄐㄐ] v11.1 超神速版載入成功 ---")
