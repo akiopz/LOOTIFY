@@ -1,12 +1,34 @@
 --[[
     戰利品 (Lootify) 自製加強版 - Orion UI 兼容版
-    版本：v11.1 (超神速與 UI 自動清理版)
+    版本：v11.2 (自動更新與神速 Bootstrapper 版)
     UI 庫：Orion Library
 ]]
 
-print("--- [愛ㄔㄐㄐ] 正在啟動 v11.1 ---")
+local VERSION = "11.2"
+local SCRIPT_URL = "https://raw.githubusercontent.com/akiopz/LOOTIFY/master/main.lua"
 
--- 1. 核心全局繞過引擎 (加強版 v11.1)
+-- 自動更新檢查邏輯
+local function CheckForUpdates()
+    local success, content = pcall(function() return game:HttpGet(SCRIPT_URL) end)
+    if success and content then
+        local remoteVersion = content:match('local VERSION = "(.-)"')
+        if remoteVersion and remoteVersion ~= VERSION then
+            print("--- [愛ㄔㄐㄐ] 檢測到新版本 " .. remoteVersion .. "，正在自動更新... ---")
+            task.spawn(function()
+                loadstring(content)()
+            end)
+            return true -- 已觸發更新
+        end
+    end
+    return false
+end
+
+if not _G.IgnoreUpdate and CheckForUpdates() then return end
+_G.IgnoreUpdate = nil -- 重置標記
+
+print("--- [愛ㄔㄐㄐ] 正在啟動 v" .. VERSION .. " ---")
+
+-- 1. 核心全局繞過引擎 (加強版 v11.2)
 local function InitBypassEngine()
     local mt = getrawmetatable(game)
     local oldIndex = mt.__index
@@ -21,8 +43,8 @@ local function InitBypassEngine()
         if not checkcaller() then
             -- 屬性偽裝
             if t:IsA("Humanoid") then
-                if k == "WalkSpeed" then return Flags.WalkSpeed or 16
-                elseif k == "JumpPower" then return Flags.JumpPower or 50 end
+                if k == "WalkSpeed" then return (Flags and Flags.WalkSpeed) or 16
+                elseif k == "JumpPower" then return (Flags and Flags.JumpPower) or 50 end
             end
             
             -- 核心冷卻繞過：強制回傳 0
@@ -32,7 +54,7 @@ local function InitBypassEngine()
             end
 
             -- 模擬幸運
-            if Flags.MaxProbability and (key:find("luck") or key:find("multi")) then
+            if Flags and Flags.MaxProbability and (key:find("luck") or key:find("multi")) then
                 return 999
             end
         end
@@ -135,11 +157,11 @@ if not OrionLib then return end
 
 -- 4. 視窗初始化
 local Window = OrionLib:MakeWindow({
-    Name = "愛ㄔㄐㄐ v11.1 [超神速版]", 
+    Name = "愛ㄔㄐㄐ v11.2 [自動更新版]", 
     HidePremium = true, 
     SaveConfig = false, 
     IntroEnabled = false,
-    ConfigFolder = "Lootify_GodSpeed_v11_1"
+    ConfigFolder = "Lootify_AutoUpdate_v11_2"
 })
 
 -- 5. 全局變量
@@ -243,7 +265,7 @@ OrionLib:Init()
 
 OrionLib:MakeNotification({
     Name = "腳本已就緒",
-    Content = "v11.1 超神速版！已自動清理冷卻警告並優化連抽。",
+    Content = "v11.2 自動更新版！下次啟動將自動檢查新版本。",
     Image = "rbxassetid://4483345998",
     Time = 5
 })
@@ -511,6 +533,6 @@ end)
 OrionLib:Init()
 
 -- ==========================================
--- 腳本初始化完成 (v11.1)
+-- 腳本初始化完成 (v11.2)
 -- ==========================================
-print("--- [愛ㄔㄐㄐ] v11.1 超神速版載入成功 ---")
+print("--- [愛ㄔㄐㄐ] v11.2 自動更新版載入成功 ---")
