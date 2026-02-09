@@ -1,21 +1,36 @@
 --[[
     戰利品 (Lootify) 自製加強版 - Orion UI 兼容版
-    版本：v9.2 (修復 404 載入問題)
+    版本：v9.3 (穩定載入加強版)
     UI 庫：Orion Library
 ]]
 
-print("--- 愛ㄔㄐㄐ 腳本正在載入... ---")
+print("--- 愛ㄔㄐㄐ 腳本正在嘗試載入 GUI 庫... ---")
 
-local OrionLib
-local success, err = pcall(function()
-    OrionLib = loadstring(game:HttpGet(('https://raw.githubusercontent.com/jensonhirst/Orion/main/source')))()
-end)
-
-if not success then
-    -- 備用載入點
-    OrionLib = loadstring(game:HttpGet(('https://raw.githubusercontent.com/shlexware/Orion/main/source')))()
+local function GetLibrary(url)
+    local success, content = pcall(game.HttpGet, game, url)
+    if success and content and not content:find("404") then
+        local func, err = loadstring(content)
+        if func then
+            return func()
+        end
+    end
+    return nil
 end
-local Window = OrionLib:MakeWindow({Name = "愛ㄔㄐㄐ v9.2", HidePremium = false, SaveConfig = false, IntroText = "修復版引擎啟動"})
+
+local OrionLib = GetLibrary('https://raw.githubusercontent.com/shlexware/Orion/main/source')
+if not OrionLib then
+    OrionLib = GetLibrary('https://raw.githubusercontent.com/jensonhirst/Orion/main/source')
+end
+if not OrionLib then
+    OrionLib = GetLibrary('https://raw.githubusercontent.com/GamerScripter/Orion-Lib/main/source')
+end
+
+if not OrionLib then
+    warn("!!! GUI 載入失敗！請檢查網路或更換執行器 !!!")
+    return
+end
+
+local Window = OrionLib:MakeWindow({Name = "愛ㄔㄐㄐ v9.3", HidePremium = false, SaveConfig = false, IntroText = "穩定版引擎啟動"})
 
 -- 全局變量
 local Flags = {
