@@ -5,7 +5,7 @@
 ]]
 
 local OrionLib = loadstring(game:HttpGet(('https://raw.githubusercontent.com/shlexware/Orion/main/source')))()
-local Window = OrionLib:MakeWindow({Name = "愛ㄔㄐㄐ v8.5", HidePremium = false, SaveConfig = false, IntroText = "繞過系統與極速引擎啟動"})
+local Window = OrionLib:MakeWindow({Name = "愛ㄔㄐㄐ v9.0", HidePremium = false, SaveConfig = false, IntroText = "神速繞過引擎啟動"})
 
 -- 全局變量
 local Flags = {
@@ -93,7 +93,7 @@ MainTab:AddToggle({
 })
 
 MainTab:AddToggle({
-	Name = "自動抽獎 (極速繞過版)",
+	Name = "神速抽獎 (God Speed Roll)",
 	Default = false,
 	Callback = function(Value)
 		Flags.AutoRoll = Value
@@ -102,12 +102,15 @@ MainTab:AddToggle({
 				local ReplicatedStorage = game:GetService("ReplicatedStorage")
 				local remote = ReplicatedStorage:FindFirstChild("Events") and (ReplicatedStorage.Events:FindFirstChild("Roll") or ReplicatedStorage.Events:FindFirstChild("RequestRoll") or ReplicatedStorage.Events:FindFirstChild("OpenChest"))
 				if remote then 
-                    remote:FireServer()
-                    -- 如果有開箱動畫完成的事件，直接觸發它以跳過等待
+                    -- 批量發送：一幀發送 10 次請求
+                    for i = 1, 10 do
+                        remote:FireServer()
+                    end
+                    -- 強制觸發領取
                     local claim = ReplicatedStorage:FindFirstChild("Events") and (ReplicatedStorage.Events:FindFirstChild("ClaimReward") or ReplicatedStorage.Events:FindFirstChild("SkipAnimation"))
                     if claim then claim:FireServer() end
                 end
-				task.wait(0.01) -- 極速模式，僅 0.01 秒間隔
+				game:GetService("RunService").Heartbeat:Wait() -- 跟隨渲染幀率，達到最高速度
 			end
 		end)
 	end    
@@ -282,9 +285,9 @@ task.spawn(function()
             if method == "FireServer" then
                 local name = self.Name:lower()
                 
-                -- 1. 跳過動畫與等待
-                if Flags.SkipAnimation and (name:find("anim") or name:find("wait") or name:find("delay")) then
-                    return nil -- 直接攔截掉所有動畫等待請求
+                -- 1. 跳過動畫與等待 (加強版)
+                if Flags.SkipAnimation and (name:find("anim") or name:find("wait") or name:find("delay") or name:find("tween") or name:find("effect")) then
+                    return nil -- 直接攔截掉所有動畫、等待、補間動畫與特效請求
                 end
 
                 -- 2. 針對抽獎、開箱與寶箱
