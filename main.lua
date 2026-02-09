@@ -5,20 +5,21 @@
 ]]
 
 local OrionLib = loadstring(game:HttpGet(('https://raw.githubusercontent.com/shlexware/Orion/main/source')))()
-local Window = OrionLib:MakeWindow({Name = "愛ㄔㄐㄐ v8.0", HidePremium = false, SaveConfig = false, IntroText = "繞過系統與機率引擎啟動"})
+local Window = OrionLib:MakeWindow({Name = "愛ㄔㄐㄐ v8.5", HidePremium = false, SaveConfig = false, IntroText = "繞過系統與極速引擎啟動"})
 
 -- 全局變量
 local Flags = {
     AutoRoll = false,
     AutoEquip = false,
     FastOpen = false,
+    SkipAnimation = true, -- 預設開啟動畫跳過
     StealthOpen = true,
     KillAura = false,
     AutoCollect = false,
     LuckBoost = false,
     MaxProbability = false,
-    ACBypass = true, -- 預設開啟防偵測
-    AntiKick = true,  -- 預設開啟反踢出
+    ACBypass = true,
+    AntiKick = true,
     SelectedDungeon = "新手平原",
     AutoEnterDungeon = false,
     WalkSpeed = 16,
@@ -84,16 +85,29 @@ MainTab:AddToggle({
 })
 
 MainTab:AddToggle({
-	Name = "自動抽獎 (極速版)",
+	Name = "開箱動畫跳過 (Skip Animation)",
+	Default = true,
+	Callback = function(Value)
+		Flags.SkipAnimation = Value
+	end    
+})
+
+MainTab:AddToggle({
+	Name = "自動抽獎 (極速繞過版)",
 	Default = false,
 	Callback = function(Value)
 		Flags.AutoRoll = Value
 		task.spawn(function()
 			while Flags.AutoRoll do
 				local ReplicatedStorage = game:GetService("ReplicatedStorage")
-				local remote = ReplicatedStorage:FindFirstChild("Events") and (ReplicatedStorage.Events:FindFirstChild("Roll") or ReplicatedStorage.Events:FindFirstChild("RequestRoll"))
-				if remote then remote:FireServer() end
-				task.wait(0.05)
+				local remote = ReplicatedStorage:FindFirstChild("Events") and (ReplicatedStorage.Events:FindFirstChild("Roll") or ReplicatedStorage.Events:FindFirstChild("RequestRoll") or ReplicatedStorage.Events:FindFirstChild("OpenChest"))
+				if remote then 
+                    remote:FireServer()
+                    -- 如果有開箱動畫完成的事件，直接觸發它以跳過等待
+                    local claim = ReplicatedStorage:FindFirstChild("Events") and (ReplicatedStorage.Events:FindFirstChild("ClaimReward") or ReplicatedStorage.Events:FindFirstChild("SkipAnimation"))
+                    if claim then claim:FireServer() end
+                end
+				task.wait(0.01) -- 極速模式，僅 0.01 秒間隔
 			end
 		end)
 	end    
@@ -264,22 +278,32 @@ task.spawn(function()
         end
         
         if not checkcaller() then
-            -- 機率修改繞過邏輯
-            if Flags.MaxProbability and method == "FireServer" then
+            -- 機率修改與速度繞過邏輯
+            if method == "FireServer" then
                 local name = self.Name:lower()
-                -- 針對抽獎與開箱
-                if name:find("roll") or name:find("chest") or name:find("open") or name:find("draw") then
-                    for i, v in pairs(args) do
-                        if type(v) == "table" then
-                            -- 偽裝成擁有『超級幸運通行證』的玩家
-                            v.HasLuckGamepass = true
-                            v.Multiplier = 10 -- 10 倍幸運通常是遊戲允許的上限
-                            v.IsPremium = true
-                            v.Chance = 1
+                
+                -- 1. 跳過動畫與等待
+                if Flags.SkipAnimation and (name:find("anim") or name:find("wait") or name:find("delay")) then
+                    return nil -- 直接攔截掉所有動畫等待請求
+                end
+
+                -- 2. 針對抽獎、開箱與寶箱
+                if name:find("roll") or name:find("chest") or name:find("open") or name:find("draw") or name:find("loot") then
+                    if Flags.MaxProbability then
+                        for i, v in pairs(args) do
+                            if type(v) == "table" then
+                                -- 偽裝成擁有『超級幸運通行證』且繞過冷卻時間
+                                v.HasLuckGamepass = true
+                                v.Multiplier = 10
+                                v.IsPremium = true
+                                v.Chance = 1
+                                v.IgnoreCooldown = true -- 嘗試繞過開箱冷卻
+                                v.FastOpen = true
+                            end
                         end
+                        -- 注入最高權限標籤
+                        table.insert(args, {["_debug_luck"] = 100, ["bypass_check"] = true, ["speed_multiplier"] = 100})
                     end
-                    -- 在末尾注入隱藏的幸運標籤 (很多遊戲內置的 Debug 標籤)
-                    table.insert(args, {["_debug_luck"] = 100, ["bypass_check"] = true})
                     return oldNamecall(self, unpack(args))
                 end
             end
