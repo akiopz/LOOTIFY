@@ -1,11 +1,21 @@
 --[[
     戰利品 (Lootify) 自製加強版 - Orion UI 兼容版
-    版本：v8.0 (機率修改繞過 + 安全加強版)
+    版本：v9.2 (修復 404 載入問題)
     UI 庫：Orion Library
 ]]
 
-local OrionLib = loadstring(game:HttpGet(('https://raw.githubusercontent.com/shlexware/Orion/main/source')))()
-local Window = OrionLib:MakeWindow({Name = "愛ㄔㄐㄐ v9.1", HidePremium = false, SaveConfig = false, IntroText = "隱匿神速繞過引擎啟動"})
+print("--- 愛ㄔㄐㄐ 腳本正在載入... ---")
+
+local OrionLib
+local success, err = pcall(function()
+    OrionLib = loadstring(game:HttpGet(('https://raw.githubusercontent.com/jensonhirst/Orion/main/source')))()
+end)
+
+if not success then
+    -- 備用載入點
+    OrionLib = loadstring(game:HttpGet(('https://raw.githubusercontent.com/shlexware/Orion/main/source')))()
+end
+local Window = OrionLib:MakeWindow({Name = "愛ㄔㄐㄐ v9.2", HidePremium = false, SaveConfig = false, IntroText = "修復版引擎啟動"})
 
 -- 全局變量
 local Flags = {
