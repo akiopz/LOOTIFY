@@ -1,10 +1,10 @@
 --[[
     戰利品 (Lootify) 自製加強版 - Orion UI 兼容版
-    版本：v11.8 (穩定神速清理版)
+    版本：v11.9 (極限神速清理版)
     UI 庫：Orion Library
 ]]
 
-local VERSION = "11.8"
+local VERSION = "11.9"
 local SCRIPT_URL = "https://raw.githubusercontent.com/akiopz/LOOTIFY/master/main.lua"
 
 -- 自動更新檢查邏輯
@@ -29,7 +29,7 @@ _G.IgnoreUpdate = nil -- 重置標記
 
 print("--- [愛ㄔㄐㄐ] 正在啟動 v" .. VERSION .. " ---")
 
--- 1. 核心全局繞過引擎 (加強版 v11.8)
+-- 1. 核心全局繞過引擎 (極限版 v11.9)
 local function InitBypassEngine()
     local mt = getrawmetatable(game)
     local oldIndex = mt.__index
@@ -37,9 +37,7 @@ local function InitBypassEngine()
     local oldNewIndex = mt.__newindex
     setreadonly(mt, false)
 
-    -- 效能優化：快取常用服務
     local ReplicatedStorage = game:GetService("ReplicatedStorage")
-    local CoreGui = game:GetService("CoreGui")
     local Players = game:GetService("Players")
     local lp = Players.LocalPlayer
     
@@ -53,8 +51,7 @@ local function InitBypassEngine()
             local key = tostring(k):lower()
             if key:find("flip") or key:find("time") or key:find("duration") or key:find("wait") or key:find("cool") or key:find("timer") then
                 if key:find("start") or key:find("last") then return 0 end
-                if key:find("duration") or key:find("time") or key:find("flip") then return 999 end
-                return 0
+                return 999999
             end
         end
         return oldIndex(t, k)
@@ -78,7 +75,7 @@ local function InitBypassEngine()
                 end
 
                 if type(args[1]) == "table" then
-                    -- 核心參數注入
+                    -- 極限參數注入
                     args[1].IsLegit = true
                     args[1].FastOpen = true
                     args[1].SkipWait = true
@@ -87,12 +84,11 @@ local function InitBypassEngine()
                     args[1].NoRollback = true
                     args[1].AntiSpamBypass = true
                     args[1].IgnoreCooldown = true
-                    args[1].FlipTime = 999
-                    args[1].Duration = 999
-                    args[1].StartTime = tick() - 1000
+                    args[1].FlipTime = 999999
+                    args[1].Duration = 999999
+                    args[1].StartTime = tick() - 10000
                     args[1].EndTime = tick()
-                    args[1].RequestTime = tick() - 500
-                    args[1].ProcessingTime = 0
+                    args[1].RequestTime = tick() - 5000
                 end
             end
         end
@@ -111,64 +107,65 @@ local function InitBypassEngine()
 
     setreadonly(mt, true)
 
-    -- 穩定清理邏輯 (v11.8)
+    -- 極限清理邏輯 (v11.9)
     task.spawn(function()
         local gui = lp:WaitForChild("PlayerGui")
         
-        -- 核心清理函數：針對警告 UI 與過多特效對象
-        local function clean(v)
+        local function extremeClean(v)
             pcall(function()
-                -- 1. 清理警告 UI
+                -- 1. 暴力銷毀所有警告與隊列 UI
                 if v:IsA("TextLabel") or v:IsA("TextButton") then
                     local t = v.Text
-                    if t:find("不足") or t:find("翻轉") or t:lower():find("cool") or t:lower():find("wait") then
+                    if t:find("不足") or t:find("翻轉") or t:lower():find("cool") or t:lower():find("wait") or t:lower():find("queue") then
                         local container = v
-                        for i = 1, 4 do -- 擴大搜尋範圍
-                            if container.Parent and (container.Parent:IsA("Frame") or container.Parent:IsA("ImageLabel") or container.Parent:IsA("CanvasGroup") or container.Parent:IsA("ScreenGui")) then
-                                container = container.Parent
-                            else break end
+                        -- 向上搜尋直到找到 ScreenGui 或頂層 Frame
+                        while container.Parent and not container.Parent:IsA("PlayerGui") do
+                            container = container.Parent
+                            if container:IsA("ScreenGui") then break end
                         end
-                        container.Visible = false
                         container:Destroy()
                     end
                 end
                 
-                -- 2. 清理導致「Queue too many object」的過多獎勵對象 (視具體遊戲結構調整)
-                if Flags.AutoRoll and (v.Name:find("Reward") or v.Name:find("Effect") or v.Name:find("Popup")) then
-                    v:Destroy()
-                end
-            end)
-        end
-        
-        gui.DescendantAdded:Connect(clean)
-        
-        -- 每 0.5 秒進行一次強制清理，防止累積
-        while true do
-            task.wait(0.5)
-            pcall(function()
-                -- 限制處理數量以優化效能
-                local descendants = gui:GetDescendants()
-                for i = 1, math.min(#descendants, 100) do 
-                    clean(descendants[i])
-                end
-                
-                -- 同步清理 Workspace 中的掉落物特效
-                for _, v in pairs(game.Workspace:GetChildren()) do
-                    if v:IsA("Part") and (v.Name:find("Effect") or v.Name:find("Reward")) then
+                -- 2. 極速清理獎勵與特效對象，防止 Queue 溢出
+                if Flags.AutoRoll then
+                    local name = v.Name:lower()
+                    if name:find("reward") or name:find("effect") or name:find("popup") or name:find("item") or name:find("spin") then
                         v:Destroy()
                     end
                 end
             end)
         end
+        
+        gui.DescendantAdded:Connect(extremeClean)
+        
+        -- 每 0.2 秒掃描一次全域特效 (Workspace)
+        task.spawn(function()
+            while true do
+                task.wait(0.2)
+                if Flags.AutoRoll then
+                    pcall(function()
+                        for _, v in pairs(game.Workspace:GetChildren()) do
+                            if v:IsA("Folder") or v:IsA("Model") or v:IsA("Part") then
+                                local n = v.Name:lower()
+                                if n:find("effect") or n:find("reward") or n:find("drop") then
+                                    v:Destroy()
+                                end
+                            end
+                        end
+                    end)
+                end
+            end
+        end)
     end)
 end
 pcall(InitBypassEngine)
 
--- 2. 連抽核心邏輯 (穩定版 v11.8)
+-- 2. 連抽核心邏輯 (極限神速版 v11.9)
 local function JitterWait()
-    -- 穩定模式：稍微提高延遲以避免 Queue 溢出 (0.03 -> 0.05)
-    local base = 0.05 
-    local jitter = math.random() * 0.02
+    -- 回歸極限速度：0.01s - 0.02s
+    local base = 0.01 
+    local jitter = math.random() * 0.01
     task.wait(base + jitter)
 end
 
@@ -177,30 +174,27 @@ local function AutoRoll()
     
     local Remote = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("Roll")
     
-    -- 使用單線程但極速，防止請求隊列過長
-    task.spawn(function()
-        local RollArgs = {
-            ["Auto"] = true,
-            ["Fast"] = true,
-            ["Mode"] = "StableGod",
-            ["FlipTime"] = 999,
-            ["Duration"] = 999,
-            ["StartTime"] = tick() - 1000
-        }
-        
-        while Flags.AutoRoll do
-            pcall(function()
-                RollArgs.StartTime = tick() - 1000
-                Remote:FireServer(RollArgs)
-            end)
-            JitterWait()
+    -- 恢復多線程併發，達到「最大上限」
+    for i = 1, 3 do
+        task.spawn(function()
+            local RollArgs = {
+                ["Auto"] = true,
+                ["Fast"] = true,
+                ["Mode"] = "MaxLimit",
+                ["FlipTime"] = 999999,
+                ["Duration"] = 999999,
+                ["StartTime"] = tick() - 10000
+            }
             
-            -- 如果檢測到 FPS 過低，自動微增延遲
-            if 1/task.wait() < 20 then
-                task.wait(0.1)
+            while Flags.AutoRoll do
+                pcall(function()
+                    RollArgs.StartTime = tick() - 10000
+                    Remote:FireServer(RollArgs)
+                end)
+                JitterWait()
             end
-        end
-    end)
+        end)
+    end
 end
 
 -- 3. 資源清理
@@ -232,11 +226,11 @@ if not OrionLib then return end
 
 -- 4. 視窗初始化
 local Window = OrionLib:MakeWindow({
-    Name = "愛ㄔㄐㄐ v11.8 [穩定清理版]", 
+    Name = "愛ㄔㄐㄐ v11.9 [極限神速版]", 
     HidePremium = true, 
     SaveConfig = false, 
     IntroEnabled = false,
-    ConfigFolder = "Lootify_Stable_v11_8"
+    ConfigFolder = "Lootify_Max_v11_9"
 })
 
 -- 5. 全局變量
@@ -340,7 +334,7 @@ OrionLib:Init()
 
 OrionLib:MakeNotification({
     Name = "腳本已就緒",
-    Content = "v11.8 穩定清理版！已修復 Queue 溢出導致的卡頓。",
+    Content = "v11.9 極限神速版！已恢復最高速發包並強化清理。",
     Image = "rbxassetid://4483345998",
     Time = 5
 })
@@ -608,6 +602,6 @@ end)
 OrionLib:Init()
 
 -- ==========================================
--- 腳本初始化完成 (v11.8)
+-- 腳本初始化完成 (v11.9)
 -- ==========================================
-print("--- [愛ㄔㄐㄐ] v11.8 穩定清理版載入成功 ---")
+print("--- [愛ㄔㄐㄐ] v11.9 極限神速清理版載入成功 ---")
