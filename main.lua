@@ -1,48 +1,59 @@
 --[[
     戰利品 (Lootify) 自製加強版 - Orion UI 兼容版
-    版本：v9.4 (極度穩定載入版)
+    版本：v9.5 (終極修復穩定版)
     UI 庫：Orion Library
 ]]
 
-print("--- 愛ㄔㄐㄐ 腳本正在嘗試載入 GUI 庫... ---")
+print("--- [愛ㄔㄐㄐ] 正在啟動 v9.5 ---")
 
 local function GetLibrary(url)
+    print("[愛ㄔㄐㄐ] 嘗試載入 UI 庫: " .. url)
     local success, content = pcall(function() return game:HttpGet(url) end)
-    if success and type(content) == "string" and #content > 100 then
-        -- 嚴格檢查：必須不是 HTML 且不是 404 錯誤字串
-        if not content:find("<!DOCTYPE") and not content:find("<html") and not content:find("404: Not Found") then
-            local func, err = loadstring(content)
-            if func then
-                local success2, lib = pcall(func)
-                if success2 then
-                    return lib
-                end
-            end
-        end
+    
+    if not success then 
+        print("[愛ㄔㄐㄐ] HttpGet 失敗")
+        return nil 
     end
-    return nil
+    
+    if type(content) ~= "string" or #content < 500 then 
+        print("[愛ㄔㄐㄐ] 內容無效或太短 (可能是 404)")
+        return nil 
+    end
+    
+    if content:find("<!DOCTYPE") or content:find("<html") or content:find("404: Not Found") then
+        print("[愛ㄔㄐㄐ] 偵測到錯誤頁面，跳過此連結")
+        return nil
+    end
+    
+    local func, err = loadstring(content)
+    if not func then
+        print("[愛ㄔㄐㄐ] 解析代碼失敗: " .. tostring(err))
+        return nil
+    end
+    
+    local success2, lib = pcall(func)
+    if success2 and type(lib) == "table" then
+        print("[愛ㄔㄐㄐ] UI 庫載入成功！")
+        return lib
+    else
+        print("[愛ㄔㄐㄐ] 執行 UI 庫失敗或回傳值非 Table")
+        return nil
+    end
 end
 
--- 嘗試多個備用載入點
-local OrionLib = GetLibrary('https://raw.githubusercontent.com/jensonhirst/Orion/main/source')
-if not OrionLib then
-    OrionLib = GetLibrary('https://raw.githubusercontent.com/shlexware/Orion/main/source')
-end
-if not OrionLib then
-    -- 第三方穩定鏡像
-    OrionLib = GetLibrary('https://raw.githubusercontent.com/7600642/7600642/main/Orion')
-end
-if not OrionLib then
-    OrionLib = GetLibrary('https://raw.githubusercontent.com/GamerScripter/Orion-Lib/main/source')
-end
+-- 四重載入保障
+local OrionLib = GetLibrary('https://raw.githubusercontent.com/shlexware/Orion/main/source')
+if not OrionLib then OrionLib = GetLibrary('https://raw.githubusercontent.com/jensonhirst/Orion/main/source') end
+if not OrionLib then OrionLib = GetLibrary('https://raw.githubusercontent.com/7600642/7600642/main/Orion') end
+if not OrionLib then OrionLib = GetLibrary('https://raw.githubusercontent.com/GamerScripter/Orion-Lib/main/source') end
 
 if not OrionLib then
-    warn("!!! GUI 載入失敗！所有備用連結均無效 !!!")
-    print("請檢查您的執行器是否支援 HttpGet，或者嘗試更換執行器。")
+    warn("!!! [愛ㄔㄐㄐ] 嚴重錯誤：無法載入任何 UI 庫連結 !!!")
+    print("請嘗試：1. 開啟 VPN 2. 更換執行器 3. 檢查網路是否屏蔽 GitHub")
     return
 end
 
-local Window = OrionLib:MakeWindow({Name = "愛ㄔㄐㄐ v9.4", HidePremium = false, SaveConfig = false, IntroText = "超穩定引擎啟動"})
+local Window = OrionLib:MakeWindow({Name = "愛ㄔㄐㄐ v9.5", HidePremium = false, SaveConfig = false, IntroText = "終極穩定版啟動"})
 
 -- 全局變量
 local Flags = {
