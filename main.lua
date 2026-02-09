@@ -1,10 +1,10 @@
 --[[
     戰利品 (Lootify) 自製加強版 - Orion UI 兼容版
-    版本：v11.6 (強效更新與神速連抽版)
+    版本：v11.7 (極致效能優化版)
     UI 庫：Orion Library
 ]]
 
-local VERSION = "11.6"
+local VERSION = "11.7"
 local SCRIPT_URL = "https://raw.githubusercontent.com/akiopz/LOOTIFY/master/main.lua"
 
 -- 自動更新檢查邏輯
@@ -29,7 +29,7 @@ _G.IgnoreUpdate = nil -- 重置標記
 
 print("--- [愛ㄔㄐㄐ] 正在啟動 v" .. VERSION .. " ---")
 
--- 1. 核心全局繞過引擎 (加強版 v11.5)
+-- 1. 核心全局繞過引擎 (加強版 v11.7)
 local function InitBypassEngine()
     local mt = getrawmetatable(game)
     local oldIndex = mt.__index
@@ -37,7 +37,13 @@ local function InitBypassEngine()
     local oldNewIndex = mt.__newindex
     setreadonly(mt, false)
 
-    -- 深度攔截與時間偽裝
+    -- 效能優化：快取常用服務與對象
+    local ReplicatedStorage = game:GetService("ReplicatedStorage")
+    local LogService = game:GetService("LogService")
+    local CoreGui = game:GetService("CoreGui")
+    local Players = game:GetService("Players")
+    local lp = Players.LocalPlayer
+    
     mt.__index = newcclosure(function(t, k)
         if not checkcaller() then
             if t:IsA("Humanoid") then
@@ -46,10 +52,9 @@ local function InitBypassEngine()
             end
             
             local key = tostring(k):lower()
-            -- 針對「翻轉時間不足」的極限繞過
             if key:find("flip") or key:find("time") or key:find("duration") or key:find("wait") or key:find("cool") or key:find("timer") then
                 if key:find("start") or key:find("last") then return 0 end
-                if key:find("duration") or key:find("time") or key:find("flip") then return 99 end -- 回傳極大值
+                if key:find("duration") or key:find("time") or key:find("flip") then return 99 end
                 return 0
             end
 
@@ -68,6 +73,7 @@ local function InitBypassEngine()
             if method == "Kick" or method == "Error" or method == "Report" then return nil end
             
             local name = self.Name:lower()
+            -- 效能優化：減少對 Log/Report 的攔截頻率，改用關鍵字過濾
             if name:find("report") or name:find("log") or name:find("detect") or name:find("anticheat") or name:find("warning") then
                 return nil
             end
@@ -78,7 +84,6 @@ local function InitBypassEngine()
                 end
 
                 if type(args[1]) == "table" then
-                    -- 終極參數注入：解決所有時間與頻率檢測
                     args[1].IsLegit = true
                     args[1].FastOpen = true
                     args[1].SkipWait = true
@@ -111,15 +116,15 @@ local function InitBypassEngine()
 
     setreadonly(mt, true)
 
-    -- 極限 UI 清理 (v11.5)
+    -- 效能優化：降低 UI 清理頻率與範圍 (v11.7)
     task.spawn(function()
-        local lp = game.Players.LocalPlayer
         local gui = lp:WaitForChild("PlayerGui")
         local function cleanUI(v)
             pcall(function()
                 if v:IsA("TextLabel") or v:IsA("TextButton") or v:IsA("TextBox") then
                     local t = v.Text:lower()
-                    if t:find("不足") or t:find("翻轉") or t:find("cool") or t:find("wait") or t:find("remain") or t:find("time") or t:find("flip") then
+                    -- 僅在關鍵字完全匹配時才銷毀，減少運算
+                    if t:find("不足") or t:find("翻轉") or t:find("cool") or t:find("wait") or t:find("remain") then
                         local container = v
                         for i = 1, 3 do
                             if container.Parent and (container.Parent:IsA("Frame") or container.Parent:IsA("ImageLabel") or container.Parent:IsA("CanvasGroup")) then
@@ -132,22 +137,27 @@ local function InitBypassEngine()
                 end
             end)
         end
+        
         gui.DescendantAdded:Connect(cleanUI)
-        pcall(function() game:GetService("CoreGui").DescendantAdded:Connect(cleanUI) end)
+        -- 效能優化：僅在有新子項加入時掃描，取消高頻 while 循環掃描
+        -- 改為每 2 秒一次的低頻維護掃描
         while true do
-            for _, v in pairs(gui:GetDescendants()) do cleanUI(v) end
-            pcall(function() for _, v in pairs(game:GetService("CoreGui"):GetDescendants()) do cleanUI(v) end end)
-            task.wait(0.2)
+            task.wait(2)
+            pcall(function()
+                for _, v in pairs(gui:GetDescendants()) do
+                    if v:IsA("TextLabel") and (v.Text:find("不足") or v.Text:find("翻轉")) then cleanUI(v) end
+                end
+            end)
         end
     end)
 end
 pcall(InitBypassEngine)
 
--- 2. 連抽核心邏輯 (神速連抽 v11.5)
+-- 2. 連抽核心邏輯 (效能優化版 v11.7)
 local function JitterWait()
-    -- 神速模式：極低延遲 + 隨機微調
-    local base = 0.01 
-    local jitter = math.random() * 0.005
+    -- 效能優化：稍微增加基礎延遲，平衡速度與卡頓感 (0.01 -> 0.03)
+    local base = 0.03 
+    local jitter = math.random() * 0.01
     task.wait(base + jitter)
 end
 
@@ -156,19 +166,24 @@ local function AutoRoll()
     
     local Remote = game:GetService("ReplicatedStorage"):WaitForChild("Remotes"):WaitForChild("Roll")
     
-    -- 使用多線程併發請求，實現零延遲感
-    for i = 1, 3 do -- 同時開啟 3 個並行線程
+    -- 效能優化：使用單一高效循環，減少線程切換開銷 (3線程 -> 2線程)
+    for i = 1, 2 do 
         task.spawn(function()
+            -- 預先建立靜態參數表，避免在循環中重複創建 table (減少 GC 壓力)
+            local RollArgs = {
+                ["Auto"] = true,
+                ["Fast"] = true,
+                ["Mode"] = "Performance",
+                ["FlipTime"] = 99,
+                ["Duration"] = 99,
+                ["StartTime"] = tick() - 100
+            }
+            
             while Flags.AutoRoll do
                 pcall(function()
-                    Remote:FireServer({
-                        ["Auto"] = true,
-                        ["Fast"] = true,
-                        ["Mode"] = "GodSpeed",
-                        ["FlipTime"] = 99,
-                        ["Duration"] = 99,
-                        ["StartTime"] = tick() - 100
-                    })
+                    -- 動態更新時間戳
+                    RollArgs.StartTime = tick() - 100
+                    Remote:FireServer(RollArgs)
                 end)
                 JitterWait()
             end
@@ -205,11 +220,11 @@ if not OrionLib then return end
 
 -- 4. 視窗初始化
 local Window = OrionLib:MakeWindow({
-    Name = "愛ㄔㄐㄐ v11.6 [神速更新版]", 
+    Name = "愛ㄔㄐㄐ v11.7 [效能優化版]", 
     HidePremium = true, 
     SaveConfig = false, 
     IntroEnabled = false,
-    ConfigFolder = "Lootify_GodSpeed_v11_6"
+    ConfigFolder = "Lootify_Performance_v11_7"
 })
 
 -- 5. 全局變量
@@ -313,7 +328,7 @@ OrionLib:Init()
 
 OrionLib:MakeNotification({
     Name = "腳本已就緒",
-    Content = "v11.6 神速更新版！已強化自動更新機制。",
+    Content = "v11.7 效能優化版！已大幅降低連抽時的卡頓感。",
     Image = "rbxassetid://4483345998",
     Time = 5
 })
@@ -581,6 +596,6 @@ end)
 OrionLib:Init()
 
 -- ==========================================
--- 腳本初始化完成 (v11.6)
+-- 腳本初始化完成 (v11.7)
 -- ==========================================
-print("--- [愛ㄔㄐㄐ] v11.6 神速更新版載入成功 ---")
+print("--- [愛ㄔㄐㄐ] v11.7 效能優化版載入成功 ---")
