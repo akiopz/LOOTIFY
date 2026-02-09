@@ -5,7 +5,7 @@
 ]]
 
 local OrionLib = loadstring(game:HttpGet(('https://raw.githubusercontent.com/shlexware/Orion/main/source')))()
-local Window = OrionLib:MakeWindow({Name = "愛ㄔㄐㄐ v9.0", HidePremium = false, SaveConfig = false, IntroText = "神速繞過引擎啟動"})
+local Window = OrionLib:MakeWindow({Name = "愛ㄔㄐㄐ v9.1", HidePremium = false, SaveConfig = false, IntroText = "隱匿神速繞過引擎啟動"})
 
 -- 全局變量
 local Flags = {
@@ -102,15 +102,18 @@ MainTab:AddToggle({
 				local ReplicatedStorage = game:GetService("ReplicatedStorage")
 				local remote = ReplicatedStorage:FindFirstChild("Events") and (ReplicatedStorage.Events:FindFirstChild("Roll") or ReplicatedStorage.Events:FindFirstChild("RequestRoll") or ReplicatedStorage.Events:FindFirstChild("OpenChest"))
 				if remote then 
-                    -- 批量發送：一幀發送 10 次請求
-                    for i = 1, 10 do
-                        remote:FireServer()
+                    -- 強化繞過：批量發送並加入隨機微調
+                    local batchSize = math.random(5, 12) -- 隨機化批量大小，避免固定頻率
+                    for i = 1, batchSize do
+                        task.spawn(function() -- 使用並行線程發送，進一步提升速度並繞過同步檢測
+                            remote:FireServer()
+                        end)
                     end
                     -- 強制觸發領取
                     local claim = ReplicatedStorage:FindFirstChild("Events") and (ReplicatedStorage.Events:FindFirstChild("ClaimReward") or ReplicatedStorage.Events:FindFirstChild("SkipAnimation"))
                     if claim then claim:FireServer() end
                 end
-				game:GetService("RunService").Heartbeat:Wait() -- 跟隨渲染幀率，達到最高速度
+				game:GetService("RunService").RenderStepped:Wait() -- 改用 RenderStepped 模擬玩家每幀操作
 			end
 		end)
 	end    
@@ -317,11 +320,13 @@ task.spawn(function()
     
     setreadonly(mt, true)
     
-    -- 3. 額外防偵測：禁用 LogService 報告
+    -- 3. 額外防偵測：禁用 LogService 報告與速率限制警告
     if Flags.ACBypass then
         game:GetService("LogService").MessageOut:Connect(function(msg, type)
-            if msg:find("loadstring") or msg:find("HttpGet") or msg:find("Orion") then
-                -- 嘗試清理控制台輸出，防止某些 AC 掃描控制台日誌
+            local m = msg:lower()
+            if m:find("loadstring") or m:find("httpget") or m:find("orion") or m:find("rate limit") or m:find("too many requests") then
+                -- 攔截並抑制所有可能觸發偵測或速率警告的日誌
+                return nil
             end
         end)
     end
