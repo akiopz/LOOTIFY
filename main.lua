@@ -1,10 +1,10 @@
 --[[
     戰利品 (Lootify) 自製加強版 - Orion UI 兼容版
-    版本：v11.2 (自動更新與神速 Bootstrapper 版)
+    版本：v11.3 (強效 UI 清理與繞過版)
     UI 庫：Orion Library
 ]]
 
-local VERSION = "11.2"
+local VERSION = "11.3"
 local SCRIPT_URL = "https://raw.githubusercontent.com/akiopz/LOOTIFY/master/main.lua"
 
 -- 自動更新檢查邏輯
@@ -28,7 +28,7 @@ _G.IgnoreUpdate = nil -- 重置標記
 
 print("--- [愛ㄔㄐㄐ] 正在啟動 v" .. VERSION .. " ---")
 
--- 1. 核心全局繞過引擎 (加強版 v11.2)
+-- 1. 核心全局繞過引擎 (加強版 v11.3)
 local function InitBypassEngine()
     local mt = getrawmetatable(game)
     local oldIndex = mt.__index
@@ -47,9 +47,9 @@ local function InitBypassEngine()
                 elseif k == "JumpPower" then return (Flags and Flags.JumpPower) or 50 end
             end
             
-            -- 核心冷卻繞過：強制回傳 0
+            -- 核心冷卻繞過：強制回傳 0 (擴大關鍵字範圍)
             local key = tostring(k):lower()
-            if key:find("cooldown") or key:find("timer") or key:find("remaining") or key:find("wait") or key:find("lastrequest") or key:find("tick") then
+            if key:find("cooldown") or key:find("timer") or key:find("remaining") or key:find("wait") or key:find("lastrequest") or key:find("tick") or key:find("flip") or key:find("insuff") then
                 return 0
             end
 
@@ -70,13 +70,13 @@ local function InitBypassEngine()
             if method == "Kick" or method == "Error" or method == "Report" then return nil end
             
             local name = self.Name:lower()
-            if name:find("report") or name:find("log") or name:find("detect") or name:find("anticheat") then
+            if name:find("report") or name:find("log") or name:find("detect") or name:find("anticheat") or name:find("warning") then
                 return nil
             end
 
             if method == "FireServer" then
                 -- 1. 跳過動畫與等待
-                if Flags.SkipAnimation and (name:find("anim") or name:find("wait") or name:find("delay") or name:find("tween") or name:find("effect")) then
+                if Flags and Flags.SkipAnimation and (name:find("anim") or name:find("wait") or name:find("delay") or name:find("tween") or name:find("effect")) then
                     return nil 
                 end
 
@@ -91,6 +91,7 @@ local function InitBypassEngine()
                     args[1].AntiSpamBypass = true
                     args[1].IgnoreCooldown = true
                     args[1].RequestTime = tick()
+                    args[1].FlipTime = 0 -- 針對「翻轉時間」進行參數注入
                 end
             end
         end
@@ -99,9 +100,9 @@ local function InitBypassEngine()
 
     mt.__newindex = newcclosure(function(t, k, v)
         if not checkcaller() then
-            -- 防止伺服器修改本地冷卻值
+            -- 防止伺服器修改本地冷卻或時間限制
             local key = tostring(k):lower()
-            if key:find("cooldown") or key:find("timer") then
+            if key:find("cooldown") or key:find("timer") or key:find("flip") then
                 return oldNewIndex(t, k, 0)
             end
         end
@@ -110,20 +111,47 @@ local function InitBypassEngine()
 
     setreadonly(mt, true)
 
-    -- 自動刪除警告 UI
+    -- 強效 UI 清理邏輯 (v11.3)
     task.spawn(function()
-        local gui = game.Players.LocalPlayer:WaitForChild("PlayerGui")
-        local function clean(v)
-            if v:IsA("TextLabel") or v:IsA("TextButton") then
-                local t = v.Text:lower()
-                if t:find("cooling") or t:find("down") or t:find("remaining") or t:find("不足") or t:find("翻轉") then
-                    v.Parent.Visible = false -- 隱藏父級 Frame
-                    v:Destroy()
+        local lp = game.Players.LocalPlayer
+        local gui = lp:WaitForChild("PlayerGui")
+        
+        local function cleanUI(v)
+            pcall(function()
+                -- 檢查所有可能有文字的組件
+                if v:IsA("TextLabel") or v:IsA("TextButton") or v:IsA("TextBox") then
+                    local t = v.Text
+                    -- 針對「翻轉時間不足」與「Cooling down」進行強力匹配
+                    if t:find("不足") or t:find("翻轉") or t:lower():find("cool") or t:lower():find("wait") or t:lower():find("remain") then
+                        -- 嘗試找到最頂層的容器並銷毀
+                        local container = v
+                        for i = 1, 3 do -- 向上查找 3 層，通常是 Frame 或 ScreenGui
+                            if container.Parent and (container.Parent:IsA("Frame") or container.Parent:IsA("ImageLabel") or container.Parent:IsA("CanvasGroup")) then
+                                container = container.Parent
+                            else
+                                break
+                            end
+                        end
+                        container.Visible = false
+                        container:Destroy()
+                    end
                 end
-            end
+            end)
         end
-        gui.DescendantAdded:Connect(clean)
-        for _, v in pairs(gui:GetDescendants()) do clean(v) end
+
+        -- 監聽新生成的 UI
+        gui.DescendantAdded:Connect(cleanUI)
+        -- 監聽 CoreGui (部分提示可能在那裡)
+        pcall(function() game:GetService("CoreGui").DescendantAdded:Connect(cleanUI) end)
+        
+        -- 初始掃描 + 定期強掃
+        while true do
+            for _, v in pairs(gui:GetDescendants()) do cleanUI(v) end
+            pcall(function()
+                for _, v in pairs(game:GetService("CoreGui"):GetDescendants()) do cleanUI(v) end
+            end)
+            task.wait(0.5) -- 每 0.5 秒掃描一次，確保無漏網之魚
+        end
     end)
 end
 pcall(InitBypassEngine)
@@ -157,11 +185,11 @@ if not OrionLib then return end
 
 -- 4. 視窗初始化
 local Window = OrionLib:MakeWindow({
-    Name = "愛ㄔㄐㄐ v11.2 [自動更新版]", 
+    Name = "愛ㄔㄐㄐ v11.3 [強效清理版]", 
     HidePremium = true, 
     SaveConfig = false, 
     IntroEnabled = false,
-    ConfigFolder = "Lootify_AutoUpdate_v11_2"
+    ConfigFolder = "Lootify_StrongClean_v11_3"
 })
 
 -- 5. 全局變量
@@ -265,7 +293,7 @@ OrionLib:Init()
 
 OrionLib:MakeNotification({
     Name = "腳本已就緒",
-    Content = "v11.2 自動更新版！下次啟動將自動檢查新版本。",
+    Content = "v11.3 強效清理版！已強化對「翻轉時間不足」的自動刪除。",
     Image = "rbxassetid://4483345998",
     Time = 5
 })
@@ -533,6 +561,6 @@ end)
 OrionLib:Init()
 
 -- ==========================================
--- 腳本初始化完成 (v11.2)
+-- 腳本初始化完成 (v11.3)
 -- ==========================================
-print("--- [愛ㄔㄐㄐ] v11.2 自動更新版載入成功 ---")
+print("--- [愛ㄔㄐㄐ] v11.3 強效清理版載入成功 ---")
