@@ -1,11 +1,11 @@
 --[[
     戰利品 (Lootify) 自製加強版 - Orion UI 兼容版
-    版本：v5.0 (功能全面強化版)
+    版本：v6.0 (機率優化強化版)
     UI 庫：Orion Library
 ]]
 
 local OrionLib = loadstring(game:HttpGet(('https://raw.githubusercontent.com/shlexware/Orion/main/source')))()
-local Window = OrionLib:MakeWindow({Name = "戰利品 (Lootify) 終極強化版 v5.0", HidePremium = false, SaveConfig = false, IntroText = "Lootify 強化引擎"})
+local Window = OrionLib:MakeWindow({Name = "戰利品 (Lootify) 終極強化版 v6.0", HidePremium = false, SaveConfig = false, IntroText = "Lootify 強化引擎"})
 
 -- 全局變量
 local Flags = {
@@ -15,6 +15,7 @@ local Flags = {
     StealthOpen = true,
     KillAura = false,
     AutoCollect = false,
+    LuckBoost = false,
     SelectedDungeon = "新手平原",
     AutoEnterDungeon = false,
     WalkSpeed = 16,
@@ -23,12 +24,14 @@ local Flags = {
     PlayerESP = false
 }
 
--- 1. 自動化分頁 (強化)
+-- 1. 自動化分頁 (新增機率優化)
 local MainTab = Window:MakeTab({
 	Name = "自動化功能",
 	Icon = "rbxassetid://4483362458",
 	PremiumOnly = false
 })
+
+MainTab:AddLabel("--- 抽獎優化 ---")
 
 MainTab:AddToggle({
 	Name = "自動抽獎 (極速版)",
@@ -40,11 +43,31 @@ MainTab:AddToggle({
 				local ReplicatedStorage = game:GetService("ReplicatedStorage")
 				local remote = ReplicatedStorage:FindFirstChild("Events") and (ReplicatedStorage.Events:FindFirstChild("Roll") or ReplicatedStorage.Events:FindFirstChild("RequestRoll"))
 				if remote then remote:FireServer() end
-				task.wait(0.05) -- 加快頻率
+				task.wait(0.05)
 			end
 		end)
 	end    
 })
+
+MainTab:AddToggle({
+	Name = "幸運機率優化 (Luck Boost)",
+	Default = false,
+	Callback = function(Value)
+		Flags.LuckBoost = Value
+		if Value then
+			OrionLib:MakeNotification({
+				Name = "機率優化已開啟",
+				Content = "正在嘗試攔截並優化抽獎幸運參數...",
+				Image = "rbxassetid://4483362458",
+				Time = 5
+			})
+		end
+	end    
+})
+
+MainTab:AddParagraph("說明","由於機率通常由伺服器端決定，此功能會嘗試在發送抽獎請求時附加幸運參數(LuckMultiplier)，並攔截本地幸運值檢測以提高開出稀有裝備的機率。")
+
+MainTab:AddLabel("--- 地圖功能 ---")
 
 MainTab:AddToggle({
 	Name = "全地圖快速秒開 (自動掃描)",
@@ -93,7 +116,7 @@ MainTab:AddToggle({
 	end    
 })
 
--- 2. 戰鬥分頁 (新增)
+-- 2. 戰鬥分頁
 local CombatTab = Window:MakeTab({
 	Name = "戰鬥與刷怪",
 	Icon = "rbxassetid://4483362458",
@@ -113,13 +136,9 @@ CombatTab:AddToggle({
 						if enemy:FindFirstChild("Humanoid") and enemy:FindFirstChild("HumanoidRootPart") and enemy.Humanoid.Health > 0 then
 							local dist = (lp.Character.HumanoidRootPart.Position - enemy.HumanoidRootPart.Position).Magnitude
 							if dist < 20 then
-								local remote = game:GetService("ReplicatedStorage"):FindFirstChild("Events") and game.Players.LocalPlayer.Character:FindFirstChildOfClass("Tool")
-								if remote then
-									-- 模擬攻擊遠程事件 (具體視遊戲而定)
-									local attackRemote = game:GetService("ReplicatedStorage").Events:FindFirstChild("Attack") or game:GetService("ReplicatedStorage").Events:FindFirstChild("Hit")
-									if attackRemote then
-										attackRemote:FireServer(enemy)
-									end
+								local attackRemote = game:GetService("ReplicatedStorage").Events:FindFirstChild("Attack") or game:GetService("ReplicatedStorage").Events:FindFirstChild("Hit")
+								if attackRemote then
+									attackRemote:FireServer(enemy)
 								end
 							end
 						end
@@ -181,7 +200,7 @@ DungeonTab:AddToggle({
 	end    
 })
 
--- 4. 角色強化 (新增無限跳)
+-- 4. 角色強化
 local PlayerTab = Window:MakeTab({
 	Name = "角色強化",
 	Icon = "rbxassetid://4483362458",
@@ -230,7 +249,6 @@ VisualTab:AddToggle({
 	Default = false,
 	Callback = function(Value)
 		Flags.PlayerESP = Value
-		-- 簡單 ESP 邏輯
 		task.spawn(function()
 			while Flags.PlayerESP do
 				for _, p in pairs(game.Players:GetPlayers()) do
@@ -261,17 +279,44 @@ VisualTab:AddToggle({
 -- 初始化
 OrionLib:Init()
 
--- 繞過邏輯
+-- 核心繞過與機率優化 Hook
 task.spawn(function()
     local mt = getrawmetatable(game)
     local oldIndex = mt.__index
+    local oldNamecall = mt.__namecall
     setreadonly(mt, false)
+    
+    -- Hook Index (屬性檢測繞過 + 幸運值模擬)
     mt.__index = newcclosure(function(t, k)
-        if not checkcaller() and t:IsA("Humanoid") then
-            if k == "WalkSpeed" then return 16
-            elseif k == "JumpPower" then return 50 end
+        if not checkcaller() then
+            if t:IsA("Humanoid") then
+                if k == "WalkSpeed" then return 16
+                elseif k == "JumpPower" then return 50 end
+            end
+            -- 嘗試模擬幸運屬性 (視遊戲具體變數名而定)
+            if Flags.LuckBoost and (k == "Luck" or k == "Lucky" or k == "LuckMultiplier") then
+                return 999
+            end
         end
         return oldIndex(t, k)
     end)
+    
+    -- Hook Namecall (攔截遠程事件)
+    mt.__namecall = newcclosure(function(self, ...)
+        local args = {...}
+        local method = getnamecallmethod()
+        
+        if not checkcaller() and Flags.LuckBoost then
+            -- 如果是抽獎相關的遠程事件，嘗試修改參數
+            if method == "FireServer" and (self.Name:find("Roll") or self.Name:find("RequestRoll")) then
+                -- 嘗試在參數中注入幸運加成
+                table.insert(args, {LuckBoost = 999, IsPremium = true})
+                return oldNamecall(self, unpack(args))
+            end
+        end
+        
+        return oldNamecall(self, ...)
+    end)
+    
     setreadonly(mt, true)
 end)
