@@ -1,36 +1,48 @@
 --[[
     戰利品 (Lootify) 自製加強版 - Orion UI 兼容版
-    版本：v9.3 (穩定載入加強版)
+    版本：v9.4 (極度穩定載入版)
     UI 庫：Orion Library
 ]]
 
 print("--- 愛ㄔㄐㄐ 腳本正在嘗試載入 GUI 庫... ---")
 
 local function GetLibrary(url)
-    local success, content = pcall(game.HttpGet, game, url)
-    if success and content and not content:find("404") then
-        local func, err = loadstring(content)
-        if func then
-            return func()
+    local success, content = pcall(function() return game:HttpGet(url) end)
+    if success and type(content) == "string" and #content > 100 then
+        -- 嚴格檢查：必須不是 HTML 且不是 404 錯誤字串
+        if not content:find("<!DOCTYPE") and not content:find("<html") and not content:find("404: Not Found") then
+            local func, err = loadstring(content)
+            if func then
+                local success2, lib = pcall(func)
+                if success2 then
+                    return lib
+                end
+            end
         end
     end
     return nil
 end
 
-local OrionLib = GetLibrary('https://raw.githubusercontent.com/shlexware/Orion/main/source')
+-- 嘗試多個備用載入點
+local OrionLib = GetLibrary('https://raw.githubusercontent.com/jensonhirst/Orion/main/source')
 if not OrionLib then
-    OrionLib = GetLibrary('https://raw.githubusercontent.com/jensonhirst/Orion/main/source')
+    OrionLib = GetLibrary('https://raw.githubusercontent.com/shlexware/Orion/main/source')
+end
+if not OrionLib then
+    -- 第三方穩定鏡像
+    OrionLib = GetLibrary('https://raw.githubusercontent.com/7600642/7600642/main/Orion')
 end
 if not OrionLib then
     OrionLib = GetLibrary('https://raw.githubusercontent.com/GamerScripter/Orion-Lib/main/source')
 end
 
 if not OrionLib then
-    warn("!!! GUI 載入失敗！請檢查網路或更換執行器 !!!")
+    warn("!!! GUI 載入失敗！所有備用連結均無效 !!!")
+    print("請檢查您的執行器是否支援 HttpGet，或者嘗試更換執行器。")
     return
 end
 
-local Window = OrionLib:MakeWindow({Name = "愛ㄔㄐㄐ v9.3", HidePremium = false, SaveConfig = false, IntroText = "穩定版引擎啟動"})
+local Window = OrionLib:MakeWindow({Name = "愛ㄔㄐㄐ v9.4", HidePremium = false, SaveConfig = false, IntroText = "超穩定引擎啟動"})
 
 -- 全局變量
 local Flags = {
