@@ -1,19 +1,20 @@
 --[[
     戰利品 (Lootify) 自製加強版 - Orion UI 兼容版
-    版本：v11.5 (神速連抽終極版)
+    版本：v11.6 (強效更新與神速連抽版)
     UI 庫：Orion Library
 ]]
 
-local VERSION = "11.5"
+local VERSION = "11.6"
 local SCRIPT_URL = "https://raw.githubusercontent.com/akiopz/LOOTIFY/master/main.lua"
 
 -- 自動更新檢查邏輯
 local function CheckForUpdates()
-    local success, content = pcall(function() return game:HttpGet(SCRIPT_URL) end)
+    -- 加入隨機參數防止 HttpGet 緩存舊版本
+    local success, content = pcall(function() return game:HttpGet(SCRIPT_URL .. "?t=" .. tick()) end)
     if success and content then
         local remoteVersion = content:match('local VERSION = "(.-)"')
         if remoteVersion and remoteVersion ~= VERSION then
-            print("--- [愛ㄔㄐㄐ] 檢測到新版本 " .. remoteVersion .. "，正在自動更新... ---")
+            warn("--- [愛ㄔㄐㄐ] 檢測到新版本 " .. remoteVersion .. " (當前 v" .. VERSION .. ")，正在自動更新... ---")
             task.spawn(function()
                 loadstring(content)()
             end)
@@ -204,11 +205,11 @@ if not OrionLib then return end
 
 -- 4. 視窗初始化
 local Window = OrionLib:MakeWindow({
-    Name = "愛ㄔㄐㄐ v11.5 [神速連抽版]", 
+    Name = "愛ㄔㄐㄐ v11.6 [神速更新版]", 
     HidePremium = true, 
     SaveConfig = false, 
     IntroEnabled = false,
-    ConfigFolder = "Lootify_GodSpeed_v11_5"
+    ConfigFolder = "Lootify_GodSpeed_v11_6"
 })
 
 -- 5. 全局變量
@@ -312,7 +313,7 @@ OrionLib:Init()
 
 OrionLib:MakeNotification({
     Name = "腳本已就緒",
-    Content = "v11.5 神速連抽版！已解鎖終極連抽頻率與時間繞過。",
+    Content = "v11.6 神速更新版！已強化自動更新機制。",
     Image = "rbxassetid://4483345998",
     Time = 5
 })
@@ -580,6 +581,6 @@ end)
 OrionLib:Init()
 
 -- ==========================================
--- 腳本初始化完成 (v11.5)
+-- 腳本初始化完成 (v11.6)
 -- ==========================================
-print("--- [愛ㄔㄐㄐ] v11.5 神速連抽版載入成功 ---")
+print("--- [愛ㄔㄐㄐ] v11.6 神速更新版載入成功 ---")
