@@ -1,11 +1,11 @@
 --[[
     戰利品 (Lootify) 自製加強版 - Orion UI 兼容版
-    版本：v6.0 (機率優化強化版)
+    版本：v7.0 (機率極大化終極版)
     UI 庫：Orion Library
 ]]
 
 local OrionLib = loadstring(game:HttpGet(('https://raw.githubusercontent.com/shlexware/Orion/main/source')))()
-local Window = OrionLib:MakeWindow({Name = "戰利品 (Lootify) 終極強化版 v6.0", HidePremium = false, SaveConfig = false, IntroText = "Lootify 強化引擎"})
+local Window = OrionLib:MakeWindow({Name = "戰利品 (Lootify) 終極強化版 v7.0", HidePremium = false, SaveConfig = false, IntroText = "機率極大化引擎啟動"})
 
 -- 全局變量
 local Flags = {
@@ -16,6 +16,7 @@ local Flags = {
     KillAura = false,
     AutoCollect = false,
     LuckBoost = false,
+    MaxProbability = false,
     SelectedDungeon = "新手平原",
     AutoEnterDungeon = false,
     WalkSpeed = 16,
@@ -24,12 +25,40 @@ local Flags = {
     PlayerESP = false
 }
 
--- 1. 自動化分頁 (新增機率優化)
+-- 1. 自動化分頁 (機率極大化)
 local MainTab = Window:MakeTab({
 	Name = "自動化功能",
 	Icon = "rbxassetid://4483362458",
 	PremiumOnly = false
 })
+
+MainTab:AddLabel("--- 終極機率修改 ---")
+
+MainTab:AddToggle({
+	Name = "機率極大化 (Max Probability)",
+	Default = false,
+	Callback = function(Value)
+		Flags.MaxProbability = Value
+		if Value then
+			OrionLib:MakeNotification({
+				Name = "機率極大化啟動",
+				Content = "已強行將所有抽獎與開箱機率參數調至最高！",
+				Image = "rbxassetid://4483362458",
+				Time = 5
+			})
+		end
+	end    
+})
+
+MainTab:AddToggle({
+	Name = "幸運機率優化 (Luck Boost)",
+	Default = false,
+	Callback = function(Value)
+		Flags.LuckBoost = Value
+	end    
+})
+
+MainTab:AddParagraph("⚠️ 警告","機率極大化會嘗試修改發往伺服器的封包參數。如果遊戲有強大的伺服器端校驗，可能會導致無效或斷線，請謹慎使用。")
 
 MainTab:AddLabel("--- 抽獎優化 ---")
 
@@ -48,24 +77,6 @@ MainTab:AddToggle({
 		end)
 	end    
 })
-
-MainTab:AddToggle({
-	Name = "幸運機率優化 (Luck Boost)",
-	Default = false,
-	Callback = function(Value)
-		Flags.LuckBoost = Value
-		if Value then
-			OrionLib:MakeNotification({
-				Name = "機率優化已開啟",
-				Content = "正在嘗試攔截並優化抽獎幸運參數...",
-				Image = "rbxassetid://4483362458",
-				Time = 5
-			})
-		end
-	end    
-})
-
-MainTab:AddParagraph("說明","由於機率通常由伺服器端決定，此功能會嘗試在發送抽獎請求時附加幸運參數(LuckMultiplier)，並攔截本地幸運值檢測以提高開出稀有裝備的機率。")
 
 MainTab:AddLabel("--- 地圖功能 ---")
 
@@ -279,37 +290,56 @@ VisualTab:AddToggle({
 -- 初始化
 OrionLib:Init()
 
--- 核心繞過與機率優化 Hook
+-- 核心繞過與機率極大化 Hook
 task.spawn(function()
     local mt = getrawmetatable(game)
     local oldIndex = mt.__index
     local oldNamecall = mt.__namecall
     setreadonly(mt, false)
     
-    -- Hook Index (屬性檢測繞過 + 幸運值模擬)
+    -- Hook Index
     mt.__index = newcclosure(function(t, k)
         if not checkcaller() then
             if t:IsA("Humanoid") then
                 if k == "WalkSpeed" then return 16
                 elseif k == "JumpPower" then return 50 end
             end
-            -- 嘗試模擬幸運屬性 (視遊戲具體變數名而定)
-            if Flags.LuckBoost and (k == "Luck" or k == "Lucky" or k == "LuckMultiplier") then
-                return 999
+            -- 模擬最高幸運屬性
+            if (Flags.LuckBoost or Flags.MaxProbability) and (k == "Luck" or k == "Lucky" or k == "LuckMultiplier" or k == "DropRate") then
+                return 999999
             end
         end
         return oldIndex(t, k)
     end)
     
-    -- Hook Namecall (攔截遠程事件)
+    -- Hook Namecall (深度攔截與機率修改)
     mt.__namecall = newcclosure(function(self, ...)
         local args = {...}
         local method = getnamecallmethod()
         
-        if not checkcaller() and Flags.LuckBoost then
-            -- 如果是抽獎相關的遠程事件，嘗試修改參數
-            if method == "FireServer" and (self.Name:find("Roll") or self.Name:find("RequestRoll")) then
-                -- 嘗試在參數中注入幸運加成
+        if not checkcaller() then
+            -- 機率極大化邏輯
+            if Flags.MaxProbability and method == "FireServer" then
+                local name = self.Name:lower()
+                if name:find("roll") or name:find("chest") or name:find("open") or name:find("lucky") or name:find("draw") then
+                    -- 遍歷參數，嘗試將所有機率相關的數值改為極大值
+                    for i, v in pairs(args) do
+                        if type(v) == "number" and v < 1 then
+                            args[i] = 1 -- 將機率從 0.x 改為 1 (100%)
+                        elseif type(v) == "table" then
+                            if v.Luck then v.Luck = 999999 end
+                            if v.Chance then v.Chance = 1 end
+                            if v.Multiplier then v.Multiplier = 999999 end
+                        end
+                    end
+                    -- 額外注入最強幸運參數
+                    table.insert(args, {MaxLuck = true, GuaranteedRare = true, Probability = 1})
+                    return oldNamecall(self, unpack(args))
+                end
+            end
+            
+            -- 基礎幸運優化
+            if Flags.LuckBoost and method == "FireServer" and (self.Name:find("Roll") or self.Name:find("RequestRoll")) then
                 table.insert(args, {LuckBoost = 999, IsPremium = true})
                 return oldNamecall(self, unpack(args))
             end
