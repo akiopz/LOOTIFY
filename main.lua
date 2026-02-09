@@ -1,10 +1,10 @@
 --[[
     戰利品 (Lootify) 自製加強版 - Orion UI 兼容版
-    版本：v11.3 (強效 UI 清理與繞過版)
+    版本：v11.4 (核心翻轉時間繞過版)
     UI 庫：Orion Library
 ]]
 
-local VERSION = "11.3"
+local VERSION = "11.4"
 local SCRIPT_URL = "https://raw.githubusercontent.com/akiopz/LOOTIFY/master/main.lua"
 
 -- 自動更新檢查邏輯
@@ -28,7 +28,7 @@ _G.IgnoreUpdate = nil -- 重置標記
 
 print("--- [愛ㄔㄐㄐ] 正在啟動 v" .. VERSION .. " ---")
 
--- 1. 核心全局繞過引擎 (加強版 v11.3)
+-- 1. 核心全局繞過引擎 (加強版 v11.4)
 local function InitBypassEngine()
     local mt = getrawmetatable(game)
     local oldIndex = mt.__index
@@ -36,8 +36,14 @@ local function InitBypassEngine()
     local oldNewIndex = mt.__newindex
     setreadonly(mt, false)
 
-    -- 深度攔截 LogService 檢測
-    local LogService = game:GetService("LogService")
+    -- 時間偽裝變數
+    local FakeStartTime = tick() - 100 
+    
+    -- 攔截全局時間函數 (防止本地計算翻轉間隔)
+    local oldTick = tick
+    local oldClock = os.clock
+    
+    -- 這裡不直接覆蓋全局，因為會影響其他腳本，改用在檢測點攔截
     
     mt.__index = newcclosure(function(t, k)
         if not checkcaller() then
@@ -47,9 +53,17 @@ local function InitBypassEngine()
                 elseif k == "JumpPower" then return (Flags and Flags.JumpPower) or 50 end
             end
             
-            -- 核心冷卻繞過：強制回傳 0 (擴大關鍵字範圍)
+            -- 核心冷卻與時間繞過 (針對「翻轉時間不足」)
             local key = tostring(k):lower()
-            if key:find("cooldown") or key:find("timer") or key:find("remaining") or key:find("wait") or key:find("lastrequest") or key:find("tick") or key:find("flip") or key:find("insuff") then
+            if key:find("cooldown") or key:find("timer") or key:find("remaining") or key:find("wait") or key:find("lastrequest") or key:find("tick") or key:find("flip") or key:find("insuff") or key:find("duration") then
+                -- 如果是請求時間，回傳很久以前的時間
+                if key:find("start") or key:find("last") then
+                    return 0
+                end
+                -- 如果是持續時間，回傳足夠長的值 (例如 5 秒)
+                if key:find("duration") or key:find("time") then
+                    return 5
+                end
                 return 0
             end
 
@@ -80,7 +94,7 @@ local function InitBypassEngine()
                     return nil 
                 end
 
-                -- 2. 注入連抽參數
+                -- 2. 注入連抽與翻轉繞過參數
                 if type(args[1]) == "table" then
                     args[1].IsLegit = true
                     args[1].FastOpen = true
@@ -90,8 +104,14 @@ local function InitBypassEngine()
                     args[1].NoRollback = true
                     args[1].AntiSpamBypass = true
                     args[1].IgnoreCooldown = true
-                    args[1].RequestTime = tick()
-                    args[1].FlipTime = 0 -- 針對「翻轉時間」進行參數注入
+                    
+                    -- 針對「翻轉時間」的核心參數注入
+                    args[1].FlipTime = 5 -- 告訴伺服器我翻轉了 5 秒
+                    args[1].Duration = 5
+                    args[1].StartTime = tick() - 10 -- 10 秒前就開始翻轉了
+                    args[1].EndTime = tick()
+                    args[1].ProcessingTime = 0
+                    args[1].RequestTime = tick() - 5
                 end
             end
         end
@@ -102,7 +122,7 @@ local function InitBypassEngine()
         if not checkcaller() then
             -- 防止伺服器修改本地冷卻或時間限制
             local key = tostring(k):lower()
-            if key:find("cooldown") or key:find("timer") or key:find("flip") then
+            if key:find("cooldown") or key:find("timer") or key:find("flip") or key:find("wait") then
                 return oldNewIndex(t, k, 0)
             end
         end
@@ -111,21 +131,18 @@ local function InitBypassEngine()
 
     setreadonly(mt, true)
 
-    -- 強效 UI 清理邏輯 (v11.3)
+    -- 強效 UI 清理邏輯 (v11.4 保持並強化)
     task.spawn(function()
         local lp = game.Players.LocalPlayer
         local gui = lp:WaitForChild("PlayerGui")
         
         local function cleanUI(v)
             pcall(function()
-                -- 檢查所有可能有文字的組件
                 if v:IsA("TextLabel") or v:IsA("TextButton") or v:IsA("TextBox") then
                     local t = v.Text
-                    -- 針對「翻轉時間不足」與「Cooling down」進行強力匹配
-                    if t:find("不足") or t:find("翻轉") or t:lower():find("cool") or t:lower():find("wait") or t:lower():find("remain") then
-                        -- 嘗試找到最頂層的容器並銷毀
+                    if t:find("不足") or t:find("翻轉") or t:lower():find("cool") or t:lower():find("wait") or t:lower():find("remain") or t:lower():find("time") then
                         local container = v
-                        for i = 1, 3 do -- 向上查找 3 層，通常是 Frame 或 ScreenGui
+                        for i = 1, 3 do
                             if container.Parent and (container.Parent:IsA("Frame") or container.Parent:IsA("ImageLabel") or container.Parent:IsA("CanvasGroup")) then
                                 container = container.Parent
                             else
@@ -139,18 +156,15 @@ local function InitBypassEngine()
             end)
         end
 
-        -- 監聽新生成的 UI
         gui.DescendantAdded:Connect(cleanUI)
-        -- 監聽 CoreGui (部分提示可能在那裡)
         pcall(function() game:GetService("CoreGui").DescendantAdded:Connect(cleanUI) end)
         
-        -- 初始掃描 + 定期強掃
         while true do
             for _, v in pairs(gui:GetDescendants()) do cleanUI(v) end
             pcall(function()
                 for _, v in pairs(game:GetService("CoreGui"):GetDescendants()) do cleanUI(v) end
             end)
-            task.wait(0.5) -- 每 0.5 秒掃描一次，確保無漏網之魚
+            task.wait(0.3) -- 縮短掃描間隔
         end
     end)
 end
@@ -185,11 +199,11 @@ if not OrionLib then return end
 
 -- 4. 視窗初始化
 local Window = OrionLib:MakeWindow({
-    Name = "愛ㄔㄐㄐ v11.3 [強效清理版]", 
+    Name = "愛ㄔㄐㄐ v11.4 [核心繞過版]", 
     HidePremium = true, 
     SaveConfig = false, 
     IntroEnabled = false,
-    ConfigFolder = "Lootify_StrongClean_v11_3"
+    ConfigFolder = "Lootify_CoreBypass_v11_4"
 })
 
 -- 5. 全局變量
@@ -293,7 +307,7 @@ OrionLib:Init()
 
 OrionLib:MakeNotification({
     Name = "腳本已就緒",
-    Content = "v11.3 強效清理版！已強化對「翻轉時間不足」的自動刪除。",
+    Content = "v11.4 核心繞過版！已深度解決「翻轉時間不足」問題。",
     Image = "rbxassetid://4483345998",
     Time = 5
 })
@@ -561,6 +575,6 @@ end)
 OrionLib:Init()
 
 -- ==========================================
--- 腳本初始化完成 (v11.3)
+-- 腳本初始化完成 (v11.4)
 -- ==========================================
-print("--- [愛ㄔㄐㄐ] v11.3 強效清理版載入成功 ---")
+print("--- [愛ㄔㄐㄐ] v11.4 核心繞過版載入成功 ---")
